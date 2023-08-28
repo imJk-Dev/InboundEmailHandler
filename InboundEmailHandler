@@ -1,0 +1,383 @@
+
+global class InboundEmailHandler implements Messaging.inboundEmailHandler 
+{
+    
+    Global Messaging.InboundEmailResult handleInboundEmail(Messaging.InboundEmail email,Messaging.InboundEnvelope env )
+    {
+        string strAuditTrailLogText = ' [Started] --> InboundEmailHandler1 ';
+        try
+        {
+            
+        
+        Messaging.InboundEmailResult result = new Messaging.InboundEmailResult();
+        string temp = email.subject;
+        system.debug('MailReceived:'+temp);
+        strAuditTrailLogText += 'Subject:'+temp +' |';
+        integer z = temp.length();
+        system.debug('SubjLength:'+z);
+        strAuditTrailLogText += 'SubLength:'+z+' |';
+        if(z == 18 && temp instanceOf Id)
+        {
+            try{
+                id myid = id.valueOf(temp);
+                String sObjName = myid.getSObjectType().getDescribe().getLabel();
+                system.debug('sObjName :'+sObjName);
+                if(sObjName == 'Import Batch')
+                {
+                    //ImportServiceBibliographicBatch objImportServiceBibliographicBatch = new ImportServiceBibliographicBatch(temp);
+                    // Database.executeBatch(objImportServiceBibliographicBatch, 1);
+                    
+                }
+                
+            }
+            catch(exception e)
+            {
+                system.debug('Message :'+e.getmessage());
+            }
+            
+        }
+        
+        else if(email.subject != null)
+        {
+            
+            string usernam =' ';
+            List<string> lststrUser = new List<string>(); 
+            boolean check = True;
+            strAuditTrailLogText += 'email.fromAddress:'+email.fromAddress+' |';
+            list<User> u =[Select Name from user where Email =: email.fromAddress];
+            for(user s: u){
+                
+                lststrUser.add(s.Name);
+            }
+            system.debug('User'+u);
+            strAuditTrailLogText += 'User:'+u+' |';
+            if(u != null)
+            {
+                //  usernam = u.split(',');
+                for(String s: lststrUser){
+                    if(check==False){
+                        usernam +=',';
+                    }
+                    usernam += s;
+                    check = false;
+                    
+                }
+            }
+            else{
+                usernam = Null;
+            }
+            String docid = email.subject;
+            List<String> lstString = docid.split(' ');
+            list<string> lstsub = new list<string>();
+            for(string s:lstString)
+            {
+                lstsub.add(s);
+            }
+            //  docid ='\''+docid+'\'';
+            string allstring= '';
+            //  String docid = email.subject.substring(1,email.subject.length()-1);
+            system.debug('docid'+docid);
+            strAuditTrailLogText += 'docid:'+ docid+' |';
+            // system.debug('yfyfy'+email );
+            
+            //string xt=.split(',');
+            
+            List<SymphonyIPM__Incoming_Email_Config_Rule__c> IDF_mail= new list<SymphonyIPM__Incoming_Email_Config_Rule__c>();
+            List<SymphonyIPM__Incoming_Email_Config_Rule__c> Patent_mail= new list<SymphonyIPM__Incoming_Email_Config_Rule__c>();
+            List<SymphonyIPM__Incoming_Email_Config_Rule__c> Trade_mail= new list<SymphonyIPM__Incoming_Email_Config_Rule__c>();
+            string IDF_QuerySelect;
+            string wherefind;
+            List<SymphonyIPM__Invention_Disclosure_New__c> Inventiondisclosure = new List<SymphonyIPM__Invention_Disclosure_New__c>();
+            
+            
+            if(Schema.sObjectType.SymphonyIPM__Invention_Disclosure_New__c.isAccessible() && SymphonyIPM__Invention_Disclosure_New__c.sObjectType.getDescribe().isAccessible())
+                IDF_mail = [SELECT SymphonyIPM__Match_Email_To__c, SymphonyIPM__Subject_Contains_Field__c, SymphonyIPM__Sender__c FROM SymphonyIPM__Incoming_Email_Config_Rule__c WHERE SymphonyIPM__Match_Email_To__c ='SymphonyIPM__Invention_Disclosure_New__c'];
+            
+            integer i=0;
+            for(SymphonyIPM__Incoming_Email_Config_Rule__c idfemail:IDF_mail)
+            {
+                IDF_QuerySelect=+','+idfemail.SymphonyIPM__Subject_Contains_Field__c;
+                if(i==0)
+                {
+                    
+                    //  wherefind=+idfemail.Subject_Contains_Field__c+ ' IN: '+lstString;
+                    wherefind=+idfemail.SymphonyIPM__Subject_Contains_Field__c+ ' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                    system.debug('wherefind>>>>>'+wherefind);
+                    strAuditTrailLogText += 'wherefind>>>>>'+wherefind+' |';                   
+                }
+                else
+                {
+                    // wherefind+= ' OR ' +idfemail.Subject_Contains_Field__c+' IN: '+lstString;
+                    //assetClause += ' OR ' + field + ' != NULL ';
+                    wherefind+=' OR '+idfemail.SymphonyIPM__Subject_Contains_Field__c+' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                }
+                i=i+1;
+            }
+            
+            string query ='Select id'+IDF_QuerySelect+' from SymphonyIPM__Invention_Disclosure_New__c where '+wherefind;
+            List<SymphonyIPM__Invention_Disclosure_New__c> IDF_Result =Database.query(query);
+            system.debug('IDF_Result'+IDF_Result);
+            strAuditTrailLogText += 'IDF_Result:'+IDF_Result+' |';
+            list<EmailMessage> lstmsg = new list<EmailMessage>();
+            list<EmailMessageRelation> lstemr = new list<EmailMessageRelation>();
+            //##For IDF
+            if(IDF_Result.size()>0)
+            {
+                for(SymphonyIPM__Invention_Disclosure_New__c inv :IDF_Result )
+                {
+                    /*   Task ctask = new Task();
+ctask.TaskSubtype ='Email';
+ctask.Subject = email.subject;
+ctask.whatId = inv.id;
+ctask.Description = email.plainTextBody;
+lsttask.add(ctask); */
+                    //system.debug('fhmgf'+email.ccAddresses);
+                    
+                    if(email.ccAddresses != null)
+                    {
+                        allstring = string.join(email.ccAddresses,',');
+                        
+                    }
+                    
+                    EmailMessage   createEmail = new EmailMessage(
+                        Subject                        = email.Subject
+                        // ,ActivityId                  = createTask.Id // NOT WRITABLE !
+                        ,Status                         = '1'
+                        ,CcAddress                     = allstring
+                        ,FromAddress                    = email.fromAddress
+                        ,FromName                       = usernam
+                        ,Headers                        = JSON.serialize( email.headers )
+                        ,HtmlBody                       = email.htmlBody
+                        ,TextBody                       = email.plainTextBody
+                        ,Incoming                       = true
+                        ,MessageDate                    = DateTime.now()
+                        ,RelatedToId					= inv.id
+                        
+                    );
+                    
+                    lstmsg.add(createEmail);
+                    
+                    if (email.binaryAttachments != null && email.binaryAttachments.size() > 0) {
+                        for (integer x = 0 ; x < email.binaryAttachments.size() ; x++) {
+                            Attachment attachment = new Attachment();
+                            attachment.ParentId = inv.Id;
+                            attachment.Name = email.binaryAttachments[x].filename;
+                            attachment.Body = email.binaryAttachments[x].body;
+                            insert attachment;
+                        }
+                    }
+                }
+                try{
+                    insert lstmsg;
+                }
+                catch(exception ex){
+                    system.debug('Error: '+ex.getMessage());
+                }
+            }
+            //##For Patent
+            else if(IDF_Result.size()==0)
+            {
+                if(Schema.sObjectType.SymphonyIPM__Patent__c.isAccessible() && SymphonyIPM__Patent__c.sObjectType.getDescribe().isAccessible())
+                    Patent_mail =[SELECT SymphonyIPM__Match_Email_To__c, SymphonyIPM__Subject_Contains_Field__c, SymphonyIPM__Sender__c FROM SymphonyIPM__Incoming_Email_Config_Rule__c WHERE SymphonyIPM__Match_Email_To__c ='SymphonyIPM__Patent__c'];
+                list<EmailMessage> lstmsgs = new list<EmailMessage>();
+                
+                integer j=0;
+                system.debug('j>>'+j);
+                strAuditTrailLogText += 'j>>'+j+' |';
+                for(SymphonyIPM__Incoming_Email_Config_Rule__c patemail :Patent_mail)
+                {
+                    IDF_QuerySelect=+','+patemail.SymphonyIPM__Subject_Contains_Field__c;
+                    if(j==0)
+                    {
+                        //  wherefind=+patemail.Subject_Contains_Field__c+ ' IN: '+lstString;
+                        wherefind=+patemail.SymphonyIPM__Subject_Contains_Field__c+ ' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                        system.debug('wherefind>>>'+wherefind);
+                        strAuditTrailLogText += '[wherefind>>>'+ wherefind +']'+' |';
+                    }
+                    else
+                    {
+                        
+                        //  wherefind+=' OR '+patemail.Subject_Contains_Field__c+' IN: '+lstString;
+                        wherefind+=' OR '+patemail.SymphonyIPM__Subject_Contains_Field__c+' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                        system.debug('wherefind else part:>>'+wherefind);
+                        //strAuditTrailLogText += 'wherefind else part:>>'+wherefind;
+                        //assetClause += ' OR ' + field + ' != NULL ';
+                    }
+                    j=j+1;
+                    //strAuditTrailLogText += 'j->>'+j+' |';
+                }
+                //strAuditTrailLogText += 'wherefind Final:->>'+wherefind+' |';
+                
+                string query1 ='Select id'+IDF_QuerySelect+' from SymphonyIPM__Patent__c where '+wherefind;
+                system.debug('query1>>>>>'+query1);
+                strAuditTrailLogText += '[query1>>>>>'+query1 +']'+' |';
+                List<SymphonyIPM__Patent__c> PAT_Result =Database.query(query1); 
+                system.debug('PAT_Result>>>>>'+PAT_Result);
+                strAuditTrailLogText += '[PAT_Result>>>>>'+ PAT_Result +']'+' |';
+                if(PAT_Result.size()>0)
+                {
+                    for(SymphonyIPM__Patent__c pat :PAT_Result)
+                    {
+                        /*   Task ctas = new Task();
+							ctas.TaskSubtype ='Email';
+							ctas.Subject = email.subject;
+							ctas.WhatId = pat.id;
+							ctas.Description = email.plainTextBody;
+							tas.add(ctas); */
+                        
+                        EmailMessage   createEmail = new EmailMessage(
+                            Subject                        = email.Subject
+                            // ,ActivityId                  = createTask.Id // NOT WRITABLE !
+                            ,Status                         = '1'
+                            ,CcAddress                       = allstring
+                            ,FromAddress                    = email.fromAddress
+                            ,FromName                       = usernam
+                            ,Headers                        = JSON.serialize( email.headers )
+                            ,HtmlBody                       = email.htmlBody
+                            ,TextBody                       = email.plainTextBody
+                            ,Incoming                       = true
+                            ,MessageDate                    = DateTime.now()
+                            ,RelatedToId					= pat.id
+                            
+                        );
+                        lstmsgs.add(createEmail);
+                        
+                        if (email.binaryAttachments != null && email.binaryAttachments.size() > 0) {
+                            for (integer x = 0 ; x < email.binaryAttachments.size() ; x++) {
+                                Attachment attachment = new Attachment();
+                                attachment.ParentId = pat.Id;
+                                attachment.Name = email.binaryAttachments[x].filename;
+                                attachment.Body = email.binaryAttachments[x].body;
+                                insert attachment;
+                            }
+                        }
+                        
+                    } 
+                    try{
+                        insert lstmsgs;
+                    }
+                    catch(exception et){
+                        system.debug('Error : '+ et.getMessage());
+                        strAuditTrailLogText += 'Error :'+et.getMessage();
+                    }
+                }
+                //##Trademark
+                else if(IDF_Result.size()==0 && PAT_Result.size()==0 )
+                {
+                    if(Schema.sObjectType.SymphonyIPM__Trademark_New__c.isAccessible() && SymphonyIPM__Trademark_New__c.sObjectType.getDescribe().isAccessible())
+                        Trade_mail =[SELECT SymphonyIPM__Match_Email_To__c, SymphonyIPM__Subject_Contains_Field__c, SymphonyIPM__Sender__c FROM SymphonyIPM__Incoming_Email_Config_Rule__c WHERE SymphonyIPM__Match_Email_To__c ='SymphonyIPM__Trademark_New__c'];
+                    list<EmailMessage> lstmsgg = new list<EmailMessage>();
+                    
+                    integer k=0;
+                    for(SymphonyIPM__Incoming_Email_Config_Rule__c trademail:Trade_mail)
+                    {
+                        IDF_QuerySelect=+','+trademail.SymphonyIPM__Subject_Contains_Field__c;
+                        if(k==0)
+                        {
+                            //  wherefind=+trademail.Subject_Contains_Field__c+ '='+docid;
+                            wherefind=+trademail.SymphonyIPM__Subject_Contains_Field__c+ ' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                        }
+                        else{
+                            //  wherefind+= ' OR ' +trademail.Subject_Contains_Field__c+'='+docid;
+                            wherefind+=' OR '+trademail.SymphonyIPM__Subject_Contains_Field__c+' IN (\''+String.join(lstsub,'\',\'')+'\')';
+                            //assetClause += ' OR ' + field + ' != NULL ';
+                        }
+                        k=k+1;
+                    }
+                    string query2 ='Select id'+IDF_QuerySelect+' from SymphonyIPM__Trademark_New__c where '+wherefind;
+                    List<SymphonyIPM__Trademark_New__c> Trade_Result =Database.query(query2);  
+                    
+                    if(Trade_Result.size()>0)
+                    {
+                        for(SymphonyIPM__Trademark_New__c tr :Trade_Result)
+                        {
+                            /*    Task ctas = new Task();
+ctas.TaskSubtype ='Email';
+ctas.Subject = email.subject;
+ctas.WhatId = tr.id;
+ctas.Description = email.plainTextBody;
+tradetask.add(ctas); */
+                            EmailMessage   createEmail = new EmailMessage(
+                                Subject                        = email.Subject
+                                // ,ActivityId                  = createTask.Id // NOT WRITABLE !
+                                ,Status                         = '1'
+                                ,CcAddress                      = allstring
+                                ,FromAddress                    = email.fromAddress
+                                ,FromName                       = usernam
+                                ,Headers                        = JSON.serialize( email.headers )
+                                ,HtmlBody                       = email.htmlBody
+                                ,TextBody                       = email.plainTextBody
+                                ,Incoming                       = true
+                                ,MessageDate                    = DateTime.now()
+                                ,RelatedToId					= tr.id
+                                
+                            );
+                            lstmsgg.add(createEmail);
+                            
+                            if (email.binaryAttachments != null && email.binaryAttachments.size() > 0) {
+                                for (integer x = 0 ; x < email.binaryAttachments.size() ; x++) {
+                                    Attachment attachment = new Attachment();
+                                    attachment.ParentId = tr.Id;
+                                    attachment.Name = email.binaryAttachments[x].filename;
+                                    attachment.Body = email.binaryAttachments[x].body;
+                                    insert attachment;
+                                }
+                            }
+                            
+                        } 
+                        try{
+                            insert lstmsgg;
+                            
+                        } 
+                        catch(Exception e)
+                        {
+                            system.debug('Error : '+ e.getMessage());
+                        }
+                        
+                        
+                    }
+                }
+            }
+        }  
+        //For AuditTrail
+        /*if (SymphonyIPM__AuditTrail__c.sObjectType.getDescribe().isCreateable() &&Schema.sObjectType.SymphonyIPM__AuditTrail__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.isCreateable())
+        {
+            SymphonyIPM__AuditTrail__c objAuditTrail = new SymphonyIPM__AuditTrail__c();
+            if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Action__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Action__c.isCreateable())
+                objAuditTrail.SymphonyIPM__Action__c = 'Insert';
+            if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__CObjectName__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__CObjectName__c.isCreateable())
+                objAuditTrail.SymphonyIPM__CObjectName__c = 'InboundEmailHandler1__c';
+            if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Description__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Description__c.isCreateable())
+                objAuditTrail.SymphonyIPM__Description__c = strAuditTrailLogText;
+            if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Status__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Status__c.isCreateable())
+                objAuditTrail.SymphonyIPM__Status__c = 'Success';
+            if (SymphonyIPM__AuditTrail__c.sObjectType.getDescribe().isCreateable() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.isAccessible())    
+                insert objAuditTrail;
+        }*/
+        strAuditTrailLogText += ' [Stopped] --> InboundEmailHandler1 ';
+        Return result; 
+        }
+        catch(Exception e)
+        {
+            strAuditTrailLogText += 'Error Occured --> '+e.getMessage() + e.getLineNumber();
+            return null;
+        }
+        finally
+        {
+            if (SymphonyIPM__AuditTrail__c.sObjectType.getDescribe().isCreateable() &&Schema.sObjectType.SymphonyIPM__AuditTrail__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.isCreateable())
+            {
+                SymphonyIPM__AuditTrail__c objAuditTrail = new SymphonyIPM__AuditTrail__c();
+                if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Action__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Action__c.isCreateable())
+                    objAuditTrail.SymphonyIPM__Action__c = 'Insert';
+                if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__CObjectName__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__CObjectName__c.isCreateable())
+                    objAuditTrail.SymphonyIPM__CObjectName__c = 'InboundEmailHandler__c1';
+                if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Description__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Description__c.isCreateable())
+                    objAuditTrail.SymphonyIPM__Description__c = strAuditTrailLogText;
+                if(Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Status__c.isAccessible() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.fields.SymphonyIPM__Status__c.isCreateable())
+                    objAuditTrail.SymphonyIPM__Status__c = 'Success';
+                if (SymphonyIPM__AuditTrail__c.sObjectType.getDescribe().isCreateable() && Schema.sObjectType.SymphonyIPM__AuditTrail__c.isAccessible())    
+                    insert objAuditTrail;
+            }       
+        }
+    } 
+}
